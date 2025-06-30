@@ -33,18 +33,43 @@ get '/login' do
     halt 500, "Missing CLIENT_ID or REDIRECT_URI environment variables"
   end
   
-  state = SecureRandom.hex(10)
-  SESSIONS[state] = { status: 'pending' }
+  # Get the client state if provided
+  client_state = params[:client_state]
+  state = client_state || SecureRandom.hex(10)
+  
+  SESSIONS[state] = { 
+    status: 'pending',
+    created_at: Time.now,
+    client_state: client_state ? true : false
+  }
   logger.info "Created session with state: #{state}"
 
   redirect_url = "https://www.patreon.com/oauth2/authorize?response_type=code" \
-                 "&client_id=#{ENV['CLIENT_ID']}" \
-                 "&redirect_uri=#{URI.encode_www_form_component(ENV['REDIRECT_URI'])}" \
-                 "&state=#{state}" \
-                 "&scope=identity"
+               "&client_id=#{ENV['CLIENT_ID']}" \
+               "&redirect_uri=#{URI.encode_www_form_component(ENV['REDIRECT_URI'])}" \
+               "&state=#{state}" \
+               "&scope=identity"
 
   logger.info "Redirecting to: #{redirect_url}"
   redirect redirect_url
+end
+
+get '/status/:state' do
+  logger.info "Status check for state: #{params[:state]}"
+  content_type :json
+  
+  session = SESSIONS[params[:state]]
+  if session
+    logger.info "Session found: #{session[:status]}"
+    session.to_json
+  else
+    logger.info "Session not found"
+    { 
+      status: "unknown",
+      suggestion: "Ensure you completed the browser flow",
+      server_time: Time.now.iso8601
+    }.to_json
+  end
 end
 
 get '/callback' do
