@@ -5,6 +5,7 @@ require 'json'
 require 'securerandom'
 require 'dotenv/load'
 require 'logger'
+require 'time'
 
 # Set up logging
 logger = Logger.new(STDOUT)
