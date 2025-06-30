@@ -129,9 +129,11 @@ get '/callback' do
     # Fetch user info with membership data
     logger.info "Fetching user info with memberships..."
     uri = URI("https://www.patreon.com/api/oauth2/v2/identity" \
-              "?include=memberships.currently_entitled_tiers" \
-              "&fields[member]=patron_status,currently_entitled_tiers" \
-              "&fields[tier]=title")
+          "?include=memberships.currently_entitled_tiers,memberships.campaign" \
+          "&fields[user]=full_name,email" \
+          "&fields[member]=patron_status,currently_entitled_tiers" \
+          "&fields[tier]=title")
+
     req = Net::HTTP::Get.new(uri)
     req['Authorization'] = "Bearer #{access_token}"
 
