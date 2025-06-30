@@ -213,7 +213,16 @@ get '/callback' do
     SESSIONS[state][:user] = user_info
     SESSIONS[state][:tier_titles] = tier_titles
     
-    "✅ Login successful! You can return to SketchUp now."
+    # Get user's name for personalization
+    user_name = user_info.dig("data", "attributes", "full_name") || 
+                user_info.dig("data", "attributes", "first_name") || 
+                "Patron"
+    
+    erb :success, locals: { 
+      user_name: user_name,
+      tier_titles: tier_titles,
+      allowed_tier: ALLOWED_TIER
+    }
 
   rescue JSON::ParserError => e
     logger.error "JSON parsing error: #{e.message}"
@@ -266,6 +275,163 @@ end
 # Simple view for unauthorized users
 __END__
 
+@@ success
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Login Successful</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      padding-top: 50px;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #fff;
+      margin: auto;
+      padding: 50px 40px;
+      max-width: 500px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      border-radius: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 5px;
+      background: linear-gradient(90deg, #4CAF50, #45a049);
+    }
+    .success-icon {
+      font-size: 4rem;
+      color: #4CAF50;
+      margin-bottom: 20px;
+      animation: bounce 1s ease-in-out;
+    }
+    @keyframes bounce {
+      0%, 20%, 60%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-20px); }
+      80% { transform: translateY(-10px); }
+    }
+    h1 {
+      color: #4CAF50;
+      margin-bottom: 10px;
+      font-size: 2.2rem;
+      font-weight: 300;
+    }
+    .welcome-text {
+      font-size: 1.2rem;
+      color: #666;
+      margin-bottom: 30px;
+    }
+    .tier-info {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      margin: 20px 0;
+      border-left: 4px solid #4CAF50;
+    }
+    .tier-info h3 {
+      margin: 0 0 10px 0;
+      color: #333;
+      font-size: 1.1rem;
+    }
+    .tier-badge {
+      display: inline-block;
+      background: #4CAF50;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: bold;
+      margin: 5px;
+      font-size: 0.9rem;
+    }
+    .instructions {
+      background: #e8f4fd;
+      padding: 20px;
+      border-radius: 10px;
+      margin: 30px 0;
+      border-left: 4px solid #2196F3;
+    }
+    .instructions h3 {
+      margin: 0 0 10px 0;
+      color: #1976D2;
+      font-size: 1.1rem;
+    }
+    .instructions p {
+      margin: 10px 0;
+      color: #555;
+      line-height: 1.5;
+    }
+    .close-btn {
+      display: inline-block;
+      margin-top: 30px;
+      text-decoration: none;
+      color: white;
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      padding: 12px 30px;
+      border-radius: 25px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    .close-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    }
+    .footer {
+      margin-top: 30px;
+      font-size: 0.9rem;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="success-icon">✅</div>
+    <h1>Welcome Back!</h1>
+    <p class="welcome-text">Hello <%= user_name %>, you're successfully authenticated!</p>
+    
+    <div class="tier-info">
+      <h3>🎖️ Your Membership Status</h3>
+      <% tier_titles.each do |tier| %>
+        <span class="tier-badge"><%= tier %></span>
+      <% end %>
+    </div>
+    
+    <div class="instructions">
+      <h3>📋 Next Steps</h3>
+      <p><strong>1.</strong> You can now close this browser tab</p>
+      <p><strong>2.</strong> Return to SketchUp to continue using SketchShaper</p>
+      <p><strong>3.</strong> Your authentication will remain active for this session</p>
+    </div>
+    
+    <a href="#" class="close-btn" onclick="window.close(); return false;">Close & Return to SketchUp</a>
+    
+    <div class="footer">
+      Thank you for supporting SketchShaper! 🙏
+    </div>
+  </div>
+
+  <script>
+    // Auto-close after 5 seconds if user doesn't click
+    setTimeout(function() {
+      if (confirm('Authentication successful! Close this window and return to SketchUp?')) {
+        window.close();
+      }
+    }, 5000);
+  </script>
+</body>
+</html>
+
 @@ unauthorized
 <!DOCTYPE html>
 <html>
@@ -304,14 +470,7 @@ __END__
       padding: 10px 20px;
       border-radius: 6px;
     }
-    .debug-info {
-      background: #f8f9fa;
-      padding: 15px;
-      margin: 20px 0;
-      border-radius: 5px;
-      font-size: 14px;
-      text-align: left;
-    }
+
   </style>
 </head>
 <body>
@@ -319,12 +478,7 @@ __END__
     <h1>🚫 Access Denied</h1>
     <p>You must be a <strong><%= allowed_tier %></strong> member to access this feature.</p>
     <p>Your current tier(s): <%= tier_titles.empty? ? "None" : tier_titles.join(", ") %></p>
-    <div class="debug-info">
-      <strong>Debug Information:</strong><br>
-      Required Tier: <%= allowed_tier %><br>
-      Your Tiers: <%= tier_titles.inspect %><br>
-      Timestamp: <%= Time.now.iso8601 %>
-    </div>
+
     <a href="https://www.patreon.com/sketchshaper" target="_blank">Become a Member</a>
   </div>
 </body>
