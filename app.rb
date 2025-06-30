@@ -84,16 +84,6 @@ class SessionStore
   end
 end
 
-# Initialize the session store
-SESSION_STORE = SessionStore.new
-
-# Error handling
-error do
-  logger.error "Error occurred: #{env['sinatra.error']}"
-  logger.error env['sinatra.error'].backtrace.join("\n")
-  "Internal Server Error: #{env['sinatra.error'].message}"
-end
-
 # Health check
 get '/' do
   logger.info "Root endpoint accessed"
