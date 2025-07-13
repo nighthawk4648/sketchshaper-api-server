@@ -11,7 +11,7 @@ logger = Logger.new(STDOUT)
 logger.level = Logger::DEBUG
 
 SESSIONS = {}
-ALLOWED_TIER = ENV['ALLOWED_TIER'] || "Free"
+ALLOWED_TIER = ENV['ALLOWED_TIER'] || "Sketch shaper-Pro"
 
 # Generic error handler
 error do
