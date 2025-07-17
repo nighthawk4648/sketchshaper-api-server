@@ -479,7 +479,7 @@ __END__
     <p>You must be a <strong><%= allowed_tier %></strong> member to access this feature.</p>
     <p>Your current tier(s): <%= tier_titles.empty? ? "None" : tier_titles.join(", ") %></p>
 
-    <a href="https://www.patreon.com/sketchshaper" target="_blank">Become a Member</a>
+    <a href="https://www.patreon.com/sketchshaper/membership" target="_blank">Become a Member</a>
   </div>
 </body>
 </html>
