@@ -11,7 +11,8 @@ logger = Logger.new(STDOUT)
 logger.level = Logger::DEBUG
 
 SESSIONS = {}
-ALLOWED_TIER = ENV['ALLOWED_TIER'] || "Free"
+# Parse multiple allowed tiers from environment variable
+ALLOWED_TIERS = (ENV['ALLOWED_TIERS'] || ENV['ALLOWED_TIER'] || "Free").split(',').map(&:strip)
 
 # Generic error handler
 error do
@@ -194,16 +195,18 @@ get '/callback' do
                       .compact
 
     logger.info "User's entitled tiers: #{tier_titles.inspect}"
-    logger.info "Required tier: #{ALLOWED_TIER}"
+    logger.info "Required tiers: #{ALLOWED_TIERS.inspect}"
 
-    # Check if user has required tier
-    unless tier_titles.include?(ALLOWED_TIER)
-      logger.info "User does not have required tier - showing unauthorized page"
+    # Check if user has any of the required tiers
+    has_access = tier_titles.any? { |user_tier| ALLOWED_TIERS.include?(user_tier) }
+    
+    unless has_access
+      logger.info "User does not have any required tier - showing unauthorized page"
       SESSIONS[state][:status] = "unauthorized"
       SESSIONS[state][:tier_titles] = tier_titles
       return erb :unauthorized, locals: { 
         tier_titles: tier_titles, 
-        allowed_tier: ALLOWED_TIER 
+        allowed_tiers: ALLOWED_TIERS 
       }
     end
 
@@ -221,7 +224,7 @@ get '/callback' do
     erb :success, locals: { 
       user_name: user_name,
       tier_titles: tier_titles,
-      allowed_tier: ALLOWED_TIER
+      allowed_tiers: ALLOWED_TIERS
     }
 
   rescue JSON::ParserError => e
@@ -251,7 +254,7 @@ get '/health' do
       client_id: ENV['CLIENT_ID'] ? "set" : "missing",
       client_secret: ENV['CLIENT_SECRET'] ? "set" : "missing",
       redirect_uri: ENV['REDIRECT_URI'] ? "set" : "missing",
-      allowed_tier: ALLOWED_TIER
+      allowed_tiers: ALLOWED_TIERS
     }
   }.to_json
 end
@@ -461,6 +464,10 @@ __END__
       margin-top: 20px;
       font-size: 18px;
     }
+    .allowed-tiers {
+      font-weight: bold;
+      color: #007bff;
+    }
     a {
       display: inline-block;
       margin-top: 30px;
@@ -470,13 +477,13 @@ __END__
       padding: 10px 20px;
       border-radius: 6px;
     }
-
   </style>
 </head>
 <body>
   <div class="container">
     <h1>🚫 Access Denied</h1>
-    <p>You must be a <strong><%= allowed_tier %></strong> member to access this feature.</p>
+    <p>You must be a member of one of these tiers to access this feature:</p>
+    <p class="allowed-tiers"><%= allowed_tiers.join(", ") %></p>
     <p>Your current tier(s): <%= tier_titles.empty? ? "None" : tier_titles.join(", ") %></p>
 
     <a href="https://www.patreon.com/sketchshaper/membership" target="_blank">Become a Member</a>
