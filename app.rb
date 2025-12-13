@@ -286,8 +286,7 @@ __END__
   <title>Login Successful</title>
   <style>
     body {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #333;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       text-align: center;
       padding-top: 50px;
@@ -490,3 +489,4 @@ __END__
   </div>
 </body>
 </html>
+
