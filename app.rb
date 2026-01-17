@@ -580,20 +580,7 @@ __END__
       <% tier_titles.each do |tier| %>
         <span class="tier-badge"><%= tier %></span>
       <% end %>
-    </div>
-    
-    <% if monthly_model_limit %>
-    <div class="model-limit-info">
-      <strong>🤖 AI Model Generation</strong><br>
-      You can generate up to <strong><%= monthly_model_limit %> models per month</strong> with your current membership.
-    </div>
-    <% end %>
-    
-    <div class="session-info">
-      <strong>📱 Session Information</strong><br>
-      Session ID: <code><%= session_id %></code><br>
-      <small>This session will remain active for 1 hour. You can close this window and return to SketchUp.</small>
-    </div>
+    </div>   
     
     <div class="instructions">
       <h3>📋 Next Steps</h3>
@@ -680,12 +667,9 @@ __END__
     <p class="allowed-tiers"><%= allowed_tiers.join(", ") %></p>
     <p>Your current tier(s): <%= tier_titles.empty? ? "None" : tier_titles.join(", ") %></p>
     
-    <div class="model-limit-info">
-      <strong>🤖 AI Model Generation</strong><br>
-      Members get up to <strong><%= MONTHLY_MODEL_LIMIT %> AI-generated models per month</strong>
-    </div>
 
     <a href="https://www.patreon.com/sketchshaper/membership" target="_blank">Become a Member</a>
   </div>
 </body>
 </html>
+
