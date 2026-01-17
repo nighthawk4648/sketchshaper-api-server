@@ -11,8 +11,10 @@ logger = Logger.new(STDOUT)
 logger.level = Logger::DEBUG
 
 SESSIONS = {}
+MODEL_GENERATION_LOG = {} # Track model generation per session
 # Parse multiple allowed tiers from environment variable
-ALLOWED_TIERS = (ENV['ALLOWED_TIERS'] || ENV['ALLOWED_TIER'] || "Free").split(',').map(&:strip)
+ALLOWED_TIERS = (ENV['ALLOWED_TIERS'] || ENV['ALLOWED_TIER'] || "").split(',').map(&:strip)
+MONTHLY_MODEL_LIMIT = ENV['MONTHLY_MODEL_LIMIT'] || 5 # Default 5 models per month
 
 # Generic error handler
 error do
@@ -63,6 +65,146 @@ get '/status/:state' do
       status: "unknown",
       suggestion: "Ensure you completed the browser flow",
       server_time: Time.now.iso8601
+    }.to_json
+  end
+end
+
+# Session validation endpoint
+get '/validate_session/:session_id' do
+  content_type :json
+  
+  session_id = params[:session_id]
+  logger.info "Validating session: #{session_id}"
+  
+  if session_id && SESSIONS[session_id]
+    session = SESSIONS[session_id]
+    
+    # Check if session is still valid (not too old)
+    if session[:status] == 'success' && (Time.now - session[:created_at]) < 3600 # 1 hour
+      {
+        status: "valid",
+        user: session[:user],
+        tier_titles: session[:tier_titles],
+        expires_at: (session[:created_at] + 3600).iso8601
+      }.to_json
+    else
+      {
+        status: "expired",
+        message: "Session has expired"
+      }.to_json
+    end
+  else
+    {
+      status: "invalid", 
+      message: "Session not found"
+    }.to_json
+  end
+end
+
+# NEW: Model generation limit check endpoint
+get '/check_model_limit/:session_id' do
+  content_type :json
+  
+  session_id = params[:session_id]
+  logger.info "Checking model limit for session: #{session_id}"
+  
+  if session_id && SESSIONS[session_id] && SESSIONS[session_id][:status] == 'success'
+    current_month = Time.now.strftime("%Y-%m")
+    
+    # Initialize tracking for this session/month if not exists
+    MODEL_GENERATION_LOG[session_id] ||= {}
+    MODEL_GENERATION_LOG[session_id][current_month] ||= 0
+    
+    models_generated = MODEL_GENERATION_LOG[session_id][current_month]
+    remaining_limit = MONTHLY_MODEL_LIMIT.to_i - models_generated
+    
+    {
+      status: "success",
+      models_generated: models_generated,
+      monthly_limit: MONTHLY_MODEL_LIMIT.to_i,
+      remaining_models: remaining_limit,
+      can_generate: remaining_limit > 0,
+      current_month: current_month
+    }.to_json
+  else
+    {
+      status: "error",
+      message: "Invalid or expired session"
+    }.to_json
+  end
+end
+
+# NEW: Record model generation
+post '/record_model_generation/:session_id' do
+  content_type :json
+  
+  session_id = params[:session_id]
+  logger.info "Recording model generation for session: #{session_id}"
+  
+  if session_id && SESSIONS[session_id] && SESSIONS[session_id][:status] == 'success'
+    current_month = Time.now.strftime("%Y-%m")
+    
+    # Initialize tracking for this session/month if not exists
+    MODEL_GENERATION_LOG[session_id] ||= {}
+    MODEL_GENERATION_LOG[session_id][current_month] ||= 0
+    
+    # Check limit before recording
+    models_generated = MODEL_GENERATION_LOG[session_id][current_month]
+    if models_generated >= MONTHLY_MODEL_LIMIT.to_i
+      {
+        status: "error",
+        message: "Monthly model limit exceeded (#{MONTHLY_MODEL_LIMIT} models per month)"
+      }.to_json
+    else
+      # Record the generation
+      MODEL_GENERATION_LOG[session_id][current_month] += 1
+      
+      logger.info "Model generation recorded. Session #{session_id} has generated #{MODEL_GENERATION_LOG[session_id][current_month]} models this month"
+      
+      {
+        status: "success",
+        models_generated: MODEL_GENERATION_LOG[session_id][current_month],
+        remaining_models: MONTHLY_MODEL_LIMIT.to_i - MODEL_GENERATION_LOG[session_id][current_month],
+        message: "Model generation recorded successfully"
+      }.to_json
+    end
+  else
+    {
+      status: "error",
+      message: "Invalid or expired session"
+    }.to_json
+  end
+end
+
+# NEW: Get user's model generation statistics
+get '/model_stats/:session_id' do
+  content_type :json
+  
+  session_id = params[:session_id]
+  logger.info "Getting model stats for session: #{session_id}"
+  
+  if session_id && SESSIONS[session_id] && SESSIONS[session_id][:status] == 'success'
+    current_month = Time.now.strftime("%Y-%m")
+    
+    MODEL_GENERATION_LOG[session_id] ||= {}
+    models_this_month = MODEL_GENERATION_LOG[session_id][current_month] || 0
+    
+    # Calculate total models across all months
+    total_models = MODEL_GENERATION_LOG[session_id].values.sum
+    
+    {
+      status: "success",
+      models_this_month: models_this_month,
+      total_models: total_models,
+      monthly_limit: MONTHLY_MODEL_LIMIT.to_i,
+      remaining_models: MONTHLY_MODEL_LIMIT.to_i - models_this_month,
+      current_month: current_month,
+      generation_history: MODEL_GENERATION_LOG[session_id]
+    }.to_json
+  else
+    {
+      status: "error",
+      message: "Invalid or expired session"
     }.to_json
   end
 end
@@ -215,6 +357,7 @@ get '/callback' do
     SESSIONS[state][:status] = "success"
     SESSIONS[state][:user] = user_info
     SESSIONS[state][:tier_titles] = tier_titles
+    SESSIONS[state][:session_id] = state # Use state as session ID
     
     # Get user's name for personalization
     user_name = user_info.dig("data", "attributes", "full_name") || 
@@ -224,7 +367,9 @@ get '/callback' do
     erb :success, locals: { 
       user_name: user_name,
       tier_titles: tier_titles,
-      allowed_tiers: ALLOWED_TIERS
+      allowed_tiers: ALLOWED_TIERS,
+      session_id: state,
+      monthly_model_limit: MONTHLY_MODEL_LIMIT
     }
 
   rescue JSON::ParserError => e
@@ -250,16 +395,18 @@ get '/health' do
     status: "ok",
     timestamp: Time.now.iso8601,
     sessions_count: SESSIONS.length,
+    model_generation_sessions: MODEL_GENERATION_LOG.length,
     env_vars: {
       client_id: ENV['CLIENT_ID'] ? "set" : "missing",
       client_secret: ENV['CLIENT_SECRET'] ? "set" : "missing",
       redirect_uri: ENV['REDIRECT_URI'] ? "set" : "missing",
-      allowed_tiers: ALLOWED_TIERS
+      allowed_tiers: ALLOWED_TIERS,
+      monthly_model_limit: MONTHLY_MODEL_LIMIT
     }
   }.to_json
 end
 
-# Cleanup old sessions (optional - run periodically)
+# Cleanup old sessions and model generation data
 get '/cleanup' do
   content_type :json
   old_sessions = SESSIONS.select { |_, session| 
@@ -268,10 +415,18 @@ get '/cleanup' do
   
   old_sessions.each { |state, _| SESSIONS.delete(state) }
   
+  # Also clean up very old model generation data (older than 3 months)
+  cutoff_date = Time.now - (3 * 30 * 24 * 60 * 60) # 3 months ago
+  MODEL_GENERATION_LOG.each do |session_id, months_data|
+    months_data.select! { |month, _| Time.parse("#{month}-01") > cutoff_date }
+    MODEL_GENERATION_LOG.delete(session_id) if months_data.empty?
+  end
+  
   {
     status: "cleanup_complete",
     removed_sessions: old_sessions.length,
-    remaining_sessions: SESSIONS.length
+    remaining_sessions: SESSIONS.length,
+    model_generation_sessions: MODEL_GENERATION_LOG.length
   }.to_json
 end
 
@@ -356,6 +511,15 @@ __END__
       margin: 5px;
       font-size: 0.9rem;
     }
+    .model-limit-info {
+      background: #e3f2fd;
+      border: 1px solid #bbdefb;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 20px 0;
+      font-size: 0.9rem;
+      color: #1565c0;
+    }
     .instructions {
       background: #e8f4fd;
       padding: 20px;
@@ -394,6 +558,15 @@ __END__
       font-size: 0.9rem;
       color: #888;
     }
+    .session-info {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 20px 0;
+      font-size: 0.9rem;
+      color: #856404;
+    }
   </style>
 </head>
 <body>
@@ -407,6 +580,19 @@ __END__
       <% tier_titles.each do |tier| %>
         <span class="tier-badge"><%= tier %></span>
       <% end %>
+    </div>
+    
+    <% if monthly_model_limit %>
+    <div class="model-limit-info">
+      <strong>🤖 AI Model Generation</strong><br>
+      You can generate up to <strong><%= monthly_model_limit %> models per month</strong> with your current membership.
+    </div>
+    <% end %>
+    
+    <div class="session-info">
+      <strong>📱 Session Information</strong><br>
+      Session ID: <code><%= session_id %></code><br>
+      <small>This session will remain active for 1 hour. You can close this window and return to SketchUp.</small>
     </div>
     
     <div class="instructions">
@@ -467,6 +653,15 @@ __END__
       font-weight: bold;
       color: #007bff;
     }
+    .model-limit-info {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 20px 0;
+      font-size: 0.9rem;
+      color: #856404;
+    }
     a {
       display: inline-block;
       margin-top: 30px;
@@ -484,9 +679,13 @@ __END__
     <p>You must be a member of one of these tiers to access this feature:</p>
     <p class="allowed-tiers"><%= allowed_tiers.join(", ") %></p>
     <p>Your current tier(s): <%= tier_titles.empty? ? "None" : tier_titles.join(", ") %></p>
+    
+    <div class="model-limit-info">
+      <strong>🤖 AI Model Generation</strong><br>
+      Members get up to <strong><%= MONTHLY_MODEL_LIMIT %> AI-generated models per month</strong>
+    </div>
 
     <a href="https://www.patreon.com/sketchshaper/membership" target="_blank">Become a Member</a>
   </div>
 </body>
 </html>
-
