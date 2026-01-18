@@ -80,12 +80,12 @@ get '/validate_session/:session_id' do
     session = SESSIONS[session_id]
     
     # Check if session is still valid (not too old)
-    if session[:status] == 'success' && (Time.now - session[:created_at]) < 3600 # 1 hour
+    if session[:status] == 'success' && (Time.now - session[:created_at]) < 864000 # 1 hour
       {
         status: "valid",
         user: session[:user],
         tier_titles: session[:tier_titles],
-        expires_at: (session[:created_at] + 3600).iso8601
+        expires_at: (session[:created_at] + 864000).iso8601
       }.to_json
     else
       {
@@ -672,4 +672,5 @@ __END__
   </div>
 </body>
 </html>
+
 
